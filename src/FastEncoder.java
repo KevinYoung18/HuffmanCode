@@ -6,17 +6,17 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.PriorityQueue;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.RecursiveTask;
 
-public class HuffmanCoding
+public class FastEncoder
 {
 	Node tree;
 	HashMap<Integer, String> encodingMap;
-	
-	HuffmanCoding()
+	FastEncoder()
 	{
 		this.encodingMap = new HashMap<Integer, String>(256);
 	}
-	
 	public static void main(String[] args) throws Exception
 	{
 		HuffmanCoding c = new HuffmanCoding();
@@ -32,58 +32,31 @@ public class HuffmanCoding
 		System.out.println("\nEncoding time(ms): " + (System.currentTimeMillis()- encodeTime) );
 		System.out.println("\nTotal execution time(ms): " + (System.currentTimeMillis()- time) );
 	}
-	
-	//generates a huffman tree for the file indicated
 	public void generateTree(String fileName) throws IOException
 	{
 		HashMap<Integer, Integer> freqTable = getFrequencyTable(new File(fileName));
 		freqToHuff(freqTable);
+		
 	}
-	
 	//encodes the indicated file with the huffman tree belonging to this object
 	public void encodeFile(String inputFile, String outputFile) throws Exception
 	{
-		InputStream input = new FileInputStream(inputFile);
+		File input = new File(inputFile);
 		FileOutputStream output = new FileOutputStream(outputFile);
 		
-		int thisByte;
-		String currentString = "";
-		byte[] outputBytes;
-		while((thisByte = input.read()) != -1)
-		{
-			
-			currentString += encodingMap.get(thisByte);
-			if((currentString.length() % 4) == 0) {
-				outputBytes = new byte[currentString.length()/4];
-				outputBytes = parseString(currentString);
-				currentString = "";
-				output.write(outputBytes);
-			}
-		}
+		ForkJoinPool pool = new ForkJoinPool();
+		Encoder task = new Encoder(encodingMap, input, 0, input.length());
+		ArrayList<byte[]> byteList = pool.invoke(task);
+		
+		for(byte[] byteArray : byteList) 
+			output.write(byteArray);
 		
 		output.write(Byte.parseByte("-1"));
 		output.close();
-		input.close();
 	}
 	
-	//parses a string of 1's and 0's  and returns a byte array corresponding to  the string
-	// string must be divisible by 4
-	private byte[] parseString(String currentString) throws Exception {
-		int numOfBytes = currentString.length() / 4;
-		byte[] byteArray =new byte[numOfBytes];
-		
-		for(int i = 0; i < numOfBytes; i++)
-		{
-			String byteStr ="";
-			for(int j = 0; j < 4; j++)
-			{
-				byteStr += currentString.charAt(i*4+j);
-			}
-			byteArray[i] = stringToByte(byteStr);
-		}
-		
-		return byteArray;
-	}
+	
+	
 	//returns a hashmap of how often(value) a byte of data(key) occurs in a given file
 	private HashMap<Integer, Integer> getFrequencyTable (File inputFile) throws IOException
 	{
@@ -135,9 +108,9 @@ public class HuffmanCoding
 		buildMap(root, "");
 		
 	}
-	//builds a hashmap of the huffman codes rooted at node n
 	private void buildMap(Node n, String s)
 	{
+		
 		if(n.left == null && n.right == null)
 		{
 			this.encodingMap.put(n.getKey(), s);
@@ -147,6 +120,89 @@ public class HuffmanCoding
 			buildMap(n.left, s + "0");
 			buildMap(n.right, s + "1");
 		}
+	}
+	
+}
+class Encoder extends RecursiveTask<ArrayList<byte[]>>
+{
+	
+	private static final long serialVersionUID = 6090393976505943773L;
+	HashMap<Integer, String> encodingTable;
+	int maxSize = 1000;
+	File inputFile;
+	long start;
+	long end;
+	
+	Encoder(HashMap<Integer, String> encodingTable, File inputFile, long start, long end)
+	{
+		this.encodingTable = encodingTable;
+		this.start = start;
+		this.end = end;
+		this.inputFile = inputFile;
+	}
+	@Override
+	protected ArrayList<byte[]> compute() {
+		if((end-start) < maxSize)
+		{
+			ArrayList<byte[]> byteList = new ArrayList<byte[]>();
+			try
+			{
+				FileInputStream input = new FileInputStream(inputFile);
+				
+				input.skip(start);
+				Integer thisByte= 0;
+				String thisString = "";
+				for(long i = start; i < end; i++)
+				{
+					thisByte = input.read();
+					thisString += encodingTable.get(thisByte);
+					if((thisString.length() % 4) == 0) 
+					{
+						byteList.add(parseString(thisString));
+						thisString = "";
+					}
+				}
+				input.close();
+			}
+			catch (Exception e) 
+			{
+				e.printStackTrace();
+			}
+			return byteList;
+		}
+		else 
+		{
+			long mid = ((end - start)/2) + start;
+			Encoder t1 = new Encoder(encodingTable, inputFile, start, mid);
+			Encoder t2 = new Encoder(encodingTable, inputFile, mid, end);
+			t1.fork();
+			t2.fork();
+			ArrayList<byte[]> byteList = new ArrayList<byte[]>();
+			byteList.addAll(t1.join());
+			byteList.addAll(t2.join());
+			return byteList;
+
+		}
+		
+	}
+	
+	//parses a string of 1's and 0's  and returns a byte array corresponding to  the string
+	// string must be divisible by 4
+	private byte[] parseString(String currentString) throws Exception {
+		int numOfBytes = currentString.length() / 4;
+		byte[] byteArray = new byte[numOfBytes];
+		
+		for(int i = 0; i < numOfBytes; i++)
+		{
+			String byteStr ="";
+			for(int j = 0; j < 4; j++)
+			{
+				byteStr += currentString.charAt(i*4+j);
+			}
+			byteArray[i] = stringToByte(byteStr);
+		}
+		
+		return byteArray;
 	}
 	//converts a binary string to byte e.g.: "0010" to a byte representing the integer 2
 	private byte stringToByte(String binaryString) throws Exception
@@ -168,50 +224,5 @@ public class HuffmanCoding
 			}
 		}
 		return value.byteValue();
-		
 	}
-	
-}
-class Node implements Comparable<Node>
-{
-	private int key;
-	private int value;
-	
-	Node left;
-	Node right;
-	
-	Node(int key, int value)
-	{
-		this.key = key;
-		this.value = value;
-	}
-	Node(Node first, Node second, int value)
-	{
-		this.value = value;
-		this.left = first;
-		this.right = second;
-	}
-	
-	@Override
-	public int compareTo(Node arg) {
-		if(value == arg.getValue())
-		{
-			if(key > arg.getKey())
-				return 1;
-			else 
-				return -1;
-		}
-		else if(value > arg.getValue())
-			return 1;
-		else
-			return -1;
-	}
-	public int getKey() {
-		return key;
-	}
-
-	public int getValue() {
-		return value;
-	}
-	
 }

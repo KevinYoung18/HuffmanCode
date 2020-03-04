@@ -21,26 +21,31 @@ public class FastTree
 	{
 		HuffmanCoding c = new HuffmanCoding();
 		long time = System.currentTimeMillis();
+		
 		c.generateTree("constitution.txt");
 		
-		System.out.println("\nExecution time(ms): " +(System.currentTimeMillis()- time) );
+		System.out.println("\nTime to generate tree(ms): " + (System.currentTimeMillis()- time) );
+		long encodeTime = System.currentTimeMillis();
 		
 		c.encodeFile("constitution.txt", "codedconstitution.txt");
-		System.out.println("\nTotal Execution time(ms): " +(System.currentTimeMillis()- time) );
+		
+		System.out.println("\nEncoding time(ms): " + (System.currentTimeMillis()- encodeTime) );
+		System.out.println("\nTotal execution time(ms): " + (System.currentTimeMillis()- time) );
 	}
+	
+	//generates a huffman tree for the file indicated
 	public void generateTree(String fileName) throws IOException
 	{
-		
-		
 		ForkJoinPool pool = new ForkJoinPool();
 		HashMap<Integer, Integer> freqTable = new HashMap<Integer, Integer>();
 		File inputFile = new File(fileName);
 		FrequencyTable t0 = new FrequencyTable(freqTable, inputFile, 0, inputFile.length());
 		freqTable = pool.invoke(t0);
-				
 		freqToHuff(freqTable);
 		
 	}
+	
+	//encodes the indicated file with the huffman tree belonging to this object
 	public void encodeFile(String inputFile, String outputFile) throws Exception
 	{
 		InputStream input = new FileInputStream(inputFile);
@@ -66,7 +71,8 @@ public class FastTree
 		input.close();
 	}
 	
-	
+	//parses a string of 1's and 0's  and returns a byte array corresponding to  the string
+	// string must be divisible by 4
 	private byte[] parseString(String currentString) throws Exception {
 		int numOfBytes = currentString.length() / 4;
 		byte[] byteArray =new byte[numOfBytes];
@@ -166,6 +172,7 @@ class FrequencyTable extends RecursiveTask<HashMap<Integer, Integer>>
 		this.table = table;
 		this.start = start;
 		this.inputFile = inputFile;
+		this.end = end;
 	}
 	@Override
 	protected HashMap<Integer, Integer> compute() {
@@ -175,10 +182,9 @@ class FrequencyTable extends RecursiveTask<HashMap<Integer, Integer>>
 			{
 				FileInputStream input = new FileInputStream(inputFile);
 				input.skip(start);
-				for(long i = start; i < end; i++)
+				Integer thisByte = 0;
+				for(long i = start; i < end && thisByte != -1; i++)
 				{
-					
-					Integer thisByte;
 					thisByte = input.read();
 					Integer frequency = table.get(thisByte);
 					if(frequency == null) {
